@@ -1,131 +1,115 @@
 import 'package:flutter/material.dart';
 
-class MqttStatusCard extends StatelessWidget {
-  const MqttStatusCard({
+import 'package:landscape/features/dashboard/models/device.dart';
+
+class DeviceCard extends StatelessWidget {
+  const DeviceCard({
     super.key,
-    required this.brokerHost,
-    required this.brokerPort,
-    required this.topic,
-    required this.brokerHostController,
-    required this.topicController,
-    required this.clientIdController,
-    required this.status,
-    required this.lastMessage,
-    required this.isConnecting,
-    required this.onReconnectTap,
+    required this.device,
+    required this.state,
+    required this.isConnected,
+    required this.onToggle,
+    required this.onTap,
   });
 
-  final String brokerHost;
-  final int brokerPort;
-  final String topic;
-  final TextEditingController brokerHostController;
-  final TextEditingController topicController;
-  final TextEditingController clientIdController;
-  final String status;
-  final String lastMessage;
-  final bool isConnecting;
-  final Future<void> Function() onReconnectTap;
+  final Device device;
+  final DeviceState? state;
+  final bool isConnected;
+  final void Function(bool) onToggle;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final textTheme = Theme.of(context).textTheme;
+    final isOn = state?.enabled == true;
+    final hasData = state?.temperature != null || state?.humidity != null;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      color: isOn
+          ? const Color(0xFFE8F5F1)
+          : Theme.of(context).colorScheme.surfaceContainerLow,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          child: Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: const Color(0xFF2A4D8F).withValues(alpha: 0.12),
-                ),
-                child: const Icon(Icons.hub_rounded, color: Color(0xFF2A4D8F)),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'MQTT Connection',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF173B33),
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: hasData && isConnected
+                                ? const Color(0xFF0A8F6A)
+                                : const Color(0xFFBBBBBB),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            device.name,
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF173B33),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$brokerHost:$brokerPort',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF173B33).withValues(alpha: 0.66),
-                      ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.thermostat_rounded,
+                          size: 15,
+                          color: Color(0xFF2A4D8F),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          state?.temperature != null
+                              ? '${state!.temperature!.toStringAsFixed(1)}°C'
+                              : '--°C',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF173B33),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Icon(
+                          Icons.water_drop_rounded,
+                          size: 15,
+                          color: Color(0xFF2A4D8F),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          state?.humidity != null
+                              ? '${state!.humidity!.toStringAsFixed(0)}%'
+                              : '--%',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF173B33),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              FilledButton.tonal(
-                onPressed: isConnecting ? null : () => onReconnectTap(),
-                child: Text(isConnecting ? 'Connecting...' : 'Reconnect'),
+              Switch(
+                value: isOn,
+                onChanged: isConnected ? onToggle : null,
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: brokerHostController,
-            decoration: const InputDecoration(
-              labelText: 'Broker host',
-              hintText: 'e.g. 192.168.1.50',
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: topicController,
-            decoration: const InputDecoration(
-              labelText: 'Topic',
-              hintText: 'e.g. home/lan/status',
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: clientIdController,
-            decoration: const InputDecoration(
-              labelText: 'Client ID',
-              hintText: 'e.g. my_android_client',
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Topic: $topic',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF173B33).withValues(alpha: 0.7),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Status: $status',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF173B33),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Last payload: $lastMessage',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF173B33).withValues(alpha: 0.7),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
