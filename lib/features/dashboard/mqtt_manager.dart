@@ -158,11 +158,8 @@ class MqttManager {
     if (client == null) return;
     for (final device in devices) {
       client.subscribe(device.statusTopic, MqttQos.atMostOnce);
+      client.subscribe(device.controlTopic, MqttQos.atMostOnce);
     }
-  }
-
-  void _subscribeToTopic(String topic) {
-    _client?.subscribe(topic, MqttQos.atMostOnce);
   }
 
   void _onConnected() {
@@ -185,20 +182,31 @@ class MqttManager {
         publishMessage.payload.message,
       );
 
+      // Statustopic — sensordata
       final state = deviceStates[event.topic];
-      if (state == null) continue;
+      if (state != null) {
+        state.lastRawPayload = payload;
+        state.lastUpdated = DateTime.now();
+        try {
+          final json = jsonDecode(payload) as Map<String, dynamic>;
+          final temp = json['temperature'];
+          final humidity = json['humidity'];
+          if (temp != null) state.temperature = (temp as num).toDouble();
+          if (humidity != null) state.humidity = (humidity as num).toDouble();
+        } catch (_) {
+          // Rådata är sparad, temperatur/fuktighet förblir oförändrade
+        }
+      }
 
-      state.lastRawPayload = payload;
-      state.lastUpdated = DateTime.now();
-
-      try {
-        final json = jsonDecode(payload) as Map<String, dynamic>;
-        final temp = json['temperature'];
-        final humidity = json['humidity'];
-        if (temp != null) state.temperature = (temp as num).toDouble();
-        if (humidity != null) state.humidity = (humidity as num).toDouble();
-      } catch (_) {
-        // Rådata är sparad, temperatur/fuktighet förblir oförändrade
+      // Kontrolltopic — on/off-tillstånd (inkl. retain vid återanslutning)
+      for (final device in devices) {
+        if (device.controlTopic == event.topic) {
+          final controlState = deviceStates[device.statusTopic];
+          if (controlState != null) {
+            controlState.enabled = payload.trim() == 'on';
+          }
+          break;
+        }
       }
     }
     _notifyListeners();
@@ -217,6 +225,7 @@ class MqttManager {
       device.controlTopic,
       MqttQos.atLeastOnce,
       builder.payload!,
+      retain: true,
     );
 
     final state = deviceStates[device.statusTopic];
@@ -231,7 +240,8 @@ class MqttManager {
     deviceStates[device.statusTopic] = DeviceState();
     await _saveDevices();
     if (isConnected) {
-      _subscribeToTopic(device.statusTopic);
+      _client?.subscribe(device.statusTopic, MqttQos.atMostOnce);
+      _client?.subscribe(device.controlTopic, MqttQos.atMostOnce);
     }
     _notifyListeners();
   }
@@ -270,7 +280,7 @@ class MqttManager {
           MqttServerClient.withPort(scanBrokerHost, scanId, _brokerPort)
             ..keepAlivePeriod = 15
             ..autoReconnect = false
-            ..logging(on: false);
+            ..logging(on: true);
 
       final connectMessage = MqttConnectMessage()
           .withClientIdentifier(scanId)
@@ -312,9 +322,11 @@ class MqttManager {
       scanClient?.disconnect();
     }
 
-    final sorted = (foundTopics.toList()..sort())
-        .take(_maxDiscoveredTopics)
-        .toList(growable: false);
+    final allTopics = foundTopics.toList()..sort();
+    final sorted = [
+      ...allTopics.where((t) => !t.startsWith(r'$')),
+      ...allTopics.where((t) => t.startsWith(r'$')),
+    ].take(_maxDiscoveredTopics).toList(growable: false);
 
     isScanning = false;
     discoveredTopics = sorted;

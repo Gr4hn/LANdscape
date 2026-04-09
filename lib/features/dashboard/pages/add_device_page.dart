@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import 'package:landscape/features/dashboard/models/device.dart';
@@ -33,7 +31,7 @@ class _AddDevicePageState extends State<AddDevicePage> {
         TextEditingController(text: widget.mqttManager.brokerHost);
     _clientIdController =
         TextEditingController(text: widget.mqttManager.clientId);
-    unawaited(_startScan());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startScan());
   }
 
   @override
@@ -53,10 +51,21 @@ class _AddDevicePageState extends State<AddDevicePage> {
       scanClientId: _clientIdController.text.trim(),
       onResult: (topics, error) {
         if (!mounted) return;
+        debugPrint('── SCAN RESULT ──');
+        debugPrint('Total topics (inkl \$SYS): ${topics.length}');
+        for (final t in topics) {
+          debugPrint('  topic: $t');
+        }
+        debugPrint('Error: $error');
+        debugPrint('─────────────────');
+        final userTopics =
+            topics.where((t) => !t.startsWith(r'$')).toList(growable: false);
         setState(() {
-          _discoveredTopics =
-              topics.where((t) => !t.startsWith(r'$')).toList(growable: false);
-          _scanError = error;
+          _discoveredTopics = userTopics;
+          _scanError = userTopics.isEmpty && topics.isNotEmpty
+              ? 'Hittade ${topics.length} \$SYS-topics men inga enhets-topics. '
+                'Kontrollera att Arduinon publicerar.'
+              : error;
           _isScanning = false;
         });
       },
@@ -65,12 +74,7 @@ class _AddDevicePageState extends State<AddDevicePage> {
 
   void _onTopicTapped(String topic) {
     _statusTopicController.text = topic;
-    // Föreslå kontrolltopic baserat på statustopic
-    final suggested = topic
-        .replaceAll('/status', '/control')
-        .replaceAll('/sensor', '/control');
-    _controlTopicController.text =
-        suggested != topic ? suggested : 'home/mobile/switch';
+    _controlTopicController.text = '';
     setState(() => _showForm = true);
   }
 
@@ -170,7 +174,7 @@ class _AddDevicePageState extends State<AddDevicePage> {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.tonalIcon(
-              onPressed: _isScanning ? null : _startScan,
+              onPressed: _startScan,
               icon: _isScanning
                   ? const SizedBox(
                       width: 14,
